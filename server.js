@@ -31,6 +31,7 @@ import onScreenRoute from "./routes/onScreenRoute.js";
 import innovateRoute from "./routes/innovateRoute.js";
 import noticeRoute from "./routes/noticeRoute.js";
 import sessionRoute from "./routes/sessionRoute.js";
+import schRoute from "./routes/schRoute.js";
 
 import practicePqRoutes from "./routes/practicePqRoutes.js";
 import { getStudentsByClass } from "./controller/authController.js";
@@ -53,7 +54,9 @@ const s3 = new S3({
 const corsOptions = {
   origin: [
     "http://localhost:3001",
+    "https://afrika-scholar.vercel.app",
     "http://localhost:3000",
+    "http://localhost:8080",
     "http://localhost:3002",
     "http://localhost:3003",
     "https://hlhs.edupro.com.ng",
@@ -122,6 +125,7 @@ app.use("/api/", receiptRoute);
 
 
 app.use("/api/", receiptRoute);
+app.use("/api/", schRoute);
 app.use("/api/", aiRoute);
 app.use("/api/", pinRoute);
 app.use("/api/", activationRoute);
