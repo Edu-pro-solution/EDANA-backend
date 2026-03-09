@@ -49,7 +49,7 @@ export const initializePayment = async (req, res) => {
 
     // Amount in kobo/cents — Paystack expects smallest currency unit
     // $9.99 USD → 999 cents. For NGN you'd multiply by 100 for kobo
-    const amountInCents = Math.round(ARTICLE_PRICE_NGN * 100); // 999
+    const amountInKobo = Math.round(ARTICLE_PRICE_NGN * 100); // 999
 
     // Call Paystack initialize endpoint
     const paystackRes = await axios.post(
