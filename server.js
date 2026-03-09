@@ -10,6 +10,7 @@ import examlistRoute from "./routes/examlistRoute.js";
 import jambRoute from "./routes/jambRoute.js";
 import gradeRoute from "./routes/gradeRoute.js";
 import pinRoute from "./routes/pinRoute.js";
+import schPaymentRoute from "./routes/schPaymentRoute.js";
 import activationRoute from "./routes/activationRoute.js";
 import catRoute from "./routes/catRoute.js";
 import stuRoute from "./routes/stuRoute.js";
@@ -134,6 +135,7 @@ app.use("/api/divine", FibroidRoute);
 app.use("/api/", classRoute);
 app.use("/api/sessions", sessionRoute);
 app.use("/api/onScreen", onScreen);
+app.use("/api/", schPaymentRoute);
 
 app.use("/api/student/:className/:sessionId", getStudentsByClass);
 app.use("/api/", gradeRoute);
