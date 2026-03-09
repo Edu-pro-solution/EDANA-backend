@@ -29,23 +29,36 @@ export const initializePayment = async (req, res) => {
         message: "email, articleId and articleTitle are required",
       });
     }
+// Check active access
+const existingAccess = await SchPayment.findOne({
+  email: email.toLowerCase(),
+  articleId,
+  status: "active",
+});
+if (existingAccess) {
+  return res.status(200).json({ success: true, alreadyPaid: true });
+}
 
-    // Check if this email already has active access to this article
-    const existingAccess = await SchPayment.findOne({
-      email: email.toLowerCase(),
-      articleId,
-      status: "active",
-    });
+// ✅ ADD THIS — reuse existing pending payment
+const existingPending = await SchPayment.findOne({
+  email: email.toLowerCase(),
+  articleId,
+  status: "pending",
+});
+if (existingPending) {
+  return res.status(200).json({
+    success: true,
+    data: {
+      reference: existingPending.reference,
+      accessCode: existingPending.accessCode,
+      authorizationUrl: existingPending.authorizationUrl,
+      paymentId: existingPending._id,
+    },
+  });
+}
 
-    if (existingAccess) {
-      return res.status(200).json({
-        success: true,
-        alreadyPaid: true,
-        message: "You already have access to this article",
-      });
-    }
-
-    const reference = generateReference(articleId);
+// Only then generate a new reference
+const reference = generateReference(articleId);
 
     // Amount in kobo/cents — Paystack expects smallest currency unit
     // $9.99 USD → 999 cents. For NGN you'd multiply by 100 for kobo
