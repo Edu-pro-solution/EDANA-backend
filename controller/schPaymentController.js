@@ -88,7 +88,7 @@ export const initializePayment = async (req, res) => {
       email: email.toLowerCase(),
       articleId,
       articleTitle,
-      amount: amountInCents,
+      amount: amountInKobo,
       currency: "USD",
       reference,
       accessCode: access_code,
