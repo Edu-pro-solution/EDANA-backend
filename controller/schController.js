@@ -15,17 +15,17 @@ export const register = async (req, res) => {
   try {
     const { username, email, password, role, referralCode } = req.body;
 
-    // ── Validate required fields ──────────────────────────────────────────────
-    if (!username || !email || !password || !role) {
+    // ── Validate required fields (role is optional at registration) ───────────
+    if (!username || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Username, email, password, and role are required.",
+        message: "Username, email, and password are required.",
       });
     }
 
-    // ── Validate role ─────────────────────────────────────────────────────────
-    const VALID_ROLES = ["academic", "student", "researcher", "institution", "professional"];
-    if (!VALID_ROLES.includes(role)) {
+    // ── Validate role only if provided ────────────────────────────────────────
+    const VALID_ROLES = ["researcher", "academic", "professional"];
+    if (role && !VALID_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
         message: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}.`,
@@ -72,7 +72,7 @@ export const register = async (req, res) => {
       username,
       email,
       password,
-      role,
+      role: role || null,
       referralCode: referralCode?.trim().toUpperCase() || null,
       referredBy,
     });
@@ -94,10 +94,10 @@ export const register = async (req, res) => {
         createdAt: user.createdAt,
       },
     });
+
   } catch (error) {
     console.error("Register error:", error);
 
-    // Mongoose duplicate key
     if (error.code === 11000) {
       const field = Object.keys(error.keyValue)[0];
       return res.status(409).json({
@@ -106,7 +106,6 @@ export const register = async (req, res) => {
       });
     }
 
-    // Mongoose validation error
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((e) => e.message);
       return res.status(400).json({
@@ -121,7 +120,6 @@ export const register = async (req, res) => {
     });
   }
 };
-
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 
 export const login = async (req, res) => {

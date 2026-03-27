@@ -33,11 +33,12 @@ import innovateRoute from "./routes/innovateRoute.js";
 import noticeRoute from "./routes/noticeRoute.js";
 import sessionRoute from "./routes/sessionRoute.js";
 import schRoute from "./routes/schRoute.js";
-
+import rateLimit from 'express-rate-limit';
 import practicePqRoutes from "./routes/practicePqRoutes.js";
 import { getStudentsByClass } from "./controller/authController.js";
 import authenticateUser from "./middleware/authMiddleware.js";
 import connectDB from "./config/db2.js";
+import './config/redis.js';
 
 dotenv.config();
 const app = express();
@@ -68,7 +69,7 @@ const corsOptions = {
     "https://divinehealthcare.vercel.app",
     "http://divinehealthcare.vercel.app",
     "https://divine4everhealth.com",
-    "https://books.edupro.com.ng",
+    "https://books.edupro.com.ng",  
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -91,14 +92,39 @@ app.use((err, req, res, next) => {
 });
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Too many requests, slow down' },
+  standardHeaders: true,
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many login attempts' },
+});
+
+// ✅ Add this new one specifically for your login endpoint
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many login attempts, try again later' },
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/auth', authLimiter);
+app.use('/api/login', loginLimiter); // ✅ this is the important new line
+
+// routes follow below...console.log('✅ Rate limiters are registered');
 
 app.use("/api/", offlineRoute);
-app.use("/api/ad", adRoutes);
-
 app.use("/api/ad", adRoutes);
 app.use("/api/", examlistRoute);
 app.use("/api/", jambRoute);
 app.use("/api/", noticeRoute);
+
+
 // Define routes
 const authRoutes = [
   { method: "get", path: "/students/:id", middleware: authenticateUser },
