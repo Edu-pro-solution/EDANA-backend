@@ -121,12 +121,10 @@ export const register = async (req, res) => {
   }
 };
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
-
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate required fields
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -134,7 +132,6 @@ export const login = async (req, res) => {
       });
     }
 
-    // Find user and include password
     const user = await SchUser.findOne({ email: email.toLowerCase() }).select("+password");
 
     if (!user) {
@@ -144,7 +141,6 @@ export const login = async (req, res) => {
       });
     }
 
-    // Compare password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
@@ -153,7 +149,6 @@ export const login = async (req, res) => {
       });
     }
 
-    // Generate token
     const token = generateToken(user._id);
 
     return res.status(200).json({
@@ -161,12 +156,13 @@ export const login = async (req, res) => {
       message: "Login successful.",
       token,
       user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        myReferralCode: user.myReferralCode,
-        createdAt: user.createdAt,
+        id:              user._id,
+        username:        user.username,
+        email:           user.email,
+        role:            user.role,
+        profileComplete: user.profileComplete, // ✅ added
+        myReferralCode:  user.myReferralCode,
+        createdAt:       user.createdAt,
       },
     });
   } catch (error) {
@@ -175,5 +171,51 @@ export const login = async (req, res) => {
       success: false,
       message: "Something went wrong. Please try again.",
     });
+  }
+};
+export const onboarding = async (req, res) => {
+  try {
+    const { role, institution, fieldOfStudy, country, interests, bio, linkedin, orcid } = req.body;
+
+    const VALID_ROLES = ["researcher", "academic", "professional"];
+    if (!role || !VALID_ROLES.includes(role)) {
+      return res.status(400).json({ success: false, message: "A valid role is required." });
+    }
+
+    const user = await SchUser.findByIdAndUpdate(
+      req.user.id,
+      {
+        role,
+        institution:    institution    || null,
+        fieldOfStudy:   fieldOfStudy   || null,
+        country:        country        || null,
+        interests:      interests      || [],
+        bio:            bio            || null,
+        linkedin:       linkedin       || null,
+        orcid:          orcid          || null,
+        profileComplete: true,
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully.",
+      user: {
+        id:              user._id,
+        username:        user.username,
+        email:           user.email,
+        role:            user.role,
+        profileComplete: user.profileComplete,
+        myReferralCode:  user.myReferralCode,
+      },
+    });
+  } catch (error) {
+    console.error("Onboarding error:", error);
+    return res.status(500).json({ success: false, message: "Something went wrong." });
   }
 };

@@ -26,15 +26,49 @@ const userSchema = new mongoose.Schema(
       minlength: [6, "Password must be at least 6 characters"],
       select: false,
     },
- role: {
-  type: String,
-  enum: {
-    values: ["researcher", "academic", "professional", null],
-    message: `Role must be one of: researcher, academic, professional`,
-  },
-  required: false,
-  default: null,
-},
+    role: {
+      type: String,
+      enum: {
+        values: ["researcher", "academic", "professional", null],
+        message: "Role must be one of: researcher, academic, professional",
+      },
+      required: false,
+      default: null,
+    },
+    institution: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    fieldOfStudy: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    country: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    interests: {
+      type: [String],
+      default: [],
+    },
+    bio: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    linkedin: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    orcid: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     referralCode: {
       type: String,
       trim: true,
