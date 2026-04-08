@@ -57,6 +57,8 @@ const corsOptions = {
   origin: [
     "http://localhost:3001",
     "https://afrika-scholar.vercel.app",
+    "https://afrikascholar.com",
+    "https://www.afrikascholar.com",
     "http://localhost:3000",
     "http://localhost:8080",
     "http://localhost:3002",
