@@ -11,6 +11,7 @@ import jambRoute from "./routes/jambRoute.js";
 import gradeRoute from "./routes/gradeRoute.js";
 import pinRoute from "./routes/pinRoute.js";
 import schPaymentRoute from "./routes/schPaymentRoute.js";
+import subscriptionRoutes from "./routes/subscriptionRoute.js";
 import activationRoute from "./routes/activationRoute.js";
 import catRoute from "./routes/catRoute.js";
 import stuRoute from "./routes/stuRoute.js";
@@ -164,7 +165,7 @@ app.use("/api/", classRoute);
 app.use("/api/sessions", sessionRoute);
 app.use("/api/onScreen", onScreen);
 app.use("/api", schPaymentRoute);
-
+app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/student/:className/:sessionId", getStudentsByClass);
 app.use("/api/", gradeRoute);
 app.use("/api/", catRoute);
