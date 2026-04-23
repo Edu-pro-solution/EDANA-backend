@@ -1,6 +1,6 @@
 import ExamQuestion from "../models/examQuestionModel.js";
 import { generateQuestions } from "../services/questionService.js";
-import { callOpenAI } from "../services/openaiService.js";
+import { callGemini } from "../services/geminiService.js";
 import { generateLessonNoteContent } from "../services/lessonNoteService.js";
 
 import { generateFieldsFromOpenAI } from "../services/generateFieldService.js";
@@ -28,11 +28,13 @@ export const generateQuestion = async (req, res) => {
 
   try {
     // Generate questions using the generateQuestions function
-    const generatedQuestions = await generateQuestions(
+    const generatedQuestions = await generateQuestions({
       topic,
       difficulty,
-      numberOfQuestions
-    );
+      numberOfQuestions,
+      subject,
+      className,
+    });
 
     if (generatedQuestions && generatedQuestions.length > 0) {
       if (preview) {
@@ -80,7 +82,10 @@ export const generateQuestion = async (req, res) => {
     console.error("Error in generateQuestion:", error);
     res
       .status(500)
-      .json({ error: "An error occurred while generating questions" });
+      .json({
+        error:
+          error?.message || "An error occurred while generating questions",
+      });
   }
 };
 
@@ -121,11 +126,7 @@ export const generateLessonNote = async (req, res) => {
 
   try {
     // Generate the lesson note content using the service
-    const lessonNoteContent = await generateLessonNoteContent(
-      topic,
-      className,
-      subject
-    );
+    const lessonNoteContent = await generateLessonNoteContent(topic, className, subject);
 
     if (!lessonNoteContent) {
       return res
@@ -163,7 +164,11 @@ export const generateLessonNote = async (req, res) => {
     console.error("Error in generateLessonNote:", error);
     res
       .status(500)
-      .json({ error: "An error occurred while generating the lesson note" });
+      .json({
+        error:
+          error?.message ||
+          "An error occurred while generating the lesson note",
+      });
   }
 };
 
@@ -217,14 +222,19 @@ export const generateTopic = async (req, res) => {
   ];
 
   try {
-    const response = await callOpenAI(messages, 300, 0.7);
+    const response = await callGemini(messages[0].content, {
+      systemInstruction:
+        "You generate concise curriculum topic lists. Return one topic per line.",
+      maxOutputTokens: 300,
+      temperature: 0.7,
+    });
 
     const topics = response.split("\n").filter((topic) => topic.trim() !== ""); // Clean up the topics
 
     res.status(200).json({ topics });
   } catch (error) {
     console.error("Error generating topics:", error);
-    res.status(500).json({ error: "Failed to generate topics" });
+    res.status(500).json({ error: error?.message || "Failed to generate topics" });
   }
 };
 
@@ -243,14 +253,19 @@ export const generateFieldTopic = async (req, res) => {
   ];
 
   try {
-    const response = await callOpenAI(messages, 300, 0.7);
+    const response = await callGemini(messages[0].content, {
+      systemInstruction:
+        "You generate concise educational topic lists. Return one topic per line.",
+      maxOutputTokens: 300,
+      temperature: 0.7,
+    });
 
     const topics = response.split("\n").filter((topic) => topic.trim() !== ""); // Clean up the topics
 
     res.status(200).json({ topics });
   } catch (error) {
     console.error("Error generating topics:", error);
-    res.status(500).json({ error: "Failed to generate topics" });
+    res.status(500).json({ error: error?.message || "Failed to generate topics" });
   }
 };
 
@@ -388,11 +403,14 @@ export const generateGeneralQuestion = async (req, res) => {
   console.log("Request Body:", req.body); // Debugging log
 
   try {
-    const generatedQuestions = await generateGenQuestions(
+    const generatedQuestions = await generateGenQuestions({
       topic,
       difficulty,
-      numberOfQuestions
-    );
+      numberOfQuestions,
+      field,
+      className: req.body.className,
+      subject: req.body.subject,
+    });
 
     if (generatedQuestions && generatedQuestions.length > 0) {
       if (preview) {
@@ -431,6 +449,9 @@ export const generateGeneralQuestion = async (req, res) => {
     console.error("Error in generateQuestion:", error);
     res
       .status(500)
-      .json({ error: "An error occurred while generating questions" });
+      .json({
+        error:
+          error?.message || "An error occurred while generating questions",
+      });
   }
 };

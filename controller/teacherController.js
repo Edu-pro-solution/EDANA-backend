@@ -1,5 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 import User from "../models/userModel.js"; // Replace with your actual model
 
 const router = express.Router();
@@ -13,21 +14,21 @@ export const createTeacher = async (req, res) => {
       return res.status(403).json({ message: "Permission denied" });
     }
 
-    // Create a teacher (You may customize this)
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
     const teacher = new User({
       role: "teacher",
       username: req.body.username,
       email: req.body.email,
-      password: req.body.password,
+      password: hashedPassword,
       address: req.body.address,
       phone: req.body.phone,
-
-      // subjectTaught: req.body.subjectTaught, // Add other teacher-specific fields
+      session: req.body.session || null,
     });
 
     const createdTeacher = await teacher.save();
     res.status(201).json(createdTeacher);
-  } catch {
+  } catch (err) {
+    console.error("createTeacher error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };

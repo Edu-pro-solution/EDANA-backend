@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import { S3 } from "@aws-sdk/client-s3";
 import cors from "cors";
+import path from "path";
 import classRoute from "./routes/classRoute.js";
 import jambAuthRoute from "./routes/jambAuthRoute.js";
 import adRoutes from "./routes/adRoutes.js";
@@ -34,12 +35,14 @@ import innovateRoute from "./routes/innovateRoute.js";
 import noticeRoute from "./routes/noticeRoute.js";
 import sessionRoute from "./routes/sessionRoute.js";
 import schRoute from "./routes/schRoute.js";
-import rateLimit from 'express-rate-limit';
+import bulkStudentRoute from "./routes/bulkStudentRoute.js";
+import homeworkRoute from "./routes/homeworkRoute.js";
+import rateLimit from "express-rate-limit";
 import practicePqRoutes from "./routes/practicePqRoutes.js";
 import { getStudentsByClass } from "./controller/authController.js";
 import authenticateUser from "./middleware/authMiddleware.js";
 import connectDB from "./config/db2.js";
-import './config/redis.js';
+import "./config/redis.js";
 
 dotenv.config();
 const app = express();
@@ -72,7 +75,7 @@ const corsOptions = {
     "https://divinehealthcare.vercel.app",
     "http://divinehealthcare.vercel.app",
     "https://divine4everhealth.com",
-    "https://books.edupro.com.ng",  
+    "https://books.edupro.com.ng",
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -81,6 +84,7 @@ const corsOptions = {
 
 app.use(express.json({ limit: "100mb" })); // Adjust size as needed
 app.use(express.urlencoded({ limit: "100mb", extended: true }));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions)); // Preflight for all routes
@@ -89,7 +93,7 @@ app.use((err, req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header(
     "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization",
   );
   next(err);
 });
@@ -98,35 +102,34 @@ app.use(express.urlencoded({ extended: true }));
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  message: { error: 'Too many requests, slow down' },
+  message: { error: "Too many requests, slow down" },
   standardHeaders: true,
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: { error: 'Too many login attempts' },
+  message: { error: "Too many login attempts" },
 });
 
 // ✅ Add this new one specifically for your login endpoint
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3,
-  message: { error: 'Too many login attempts, try again later' },
+  message: { error: "Too many login attempts, try again later" },
 });
 
-app.use('/api/', apiLimiter);
-app.use('/api/auth', authLimiter);
-app.use('/api/login', loginLimiter); // ✅ this is the important new line
+app.use("/api/", apiLimiter);
+app.use("/api/auth", authLimiter);
+app.use("/api/login", loginLimiter); // ✅ this is the important new line
 
 // routes follow below...console.log('✅ Rate limiters are registered');
 
 app.use("/api/", offlineRoute);
-app.use("/api/ad", adRoutes);
+app.use("/api/ad", adRoutes); 
 app.use("/api/", examlistRoute);
 app.use("/api/", jambRoute);
 app.use("/api/", noticeRoute);
-
 
 // Define routes
 const authRoutes = [
@@ -162,7 +165,9 @@ app.use("/api/", activationRoute);
 app.use("/api/", jambsubmitRoute);
 app.use("/api/divine", FibroidRoute);
 app.use("/api/", classRoute);
+app.use("/api/", bulkStudentRoute);
 app.use("/api/sessions", sessionRoute);
+app.use("/api/", homeworkRoute);
 app.use("/api/onScreen", onScreen);
 app.use("/api", schPaymentRoute);
 app.use("/api/subscription", subscriptionRoutes);

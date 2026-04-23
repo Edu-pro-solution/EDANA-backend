@@ -69,53 +69,68 @@
 //   }
 // }
 
-import OpenAI from "openai";
+import { callGeminiJson } from "./geminiService.js";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function normalizeQuestions(result) {
+  const list = Array.isArray(result) ? result : result?.questions;
+  if (!Array.isArray(list)) {
+    throw new Error("No questions were generated.");
+  }
 
-async function waitForRetry(attempt) {
-  const delay = Math.min(1000 * 2 ** attempt, 30000); // Exponential backoff
-  return new Promise((resolve) => setTimeout(resolve, delay));
+  return list.map((item) => {
+    const options = Array.isArray(item?.options)
+      ? item.options.map((opt) => String(opt).trim()).filter(Boolean)
+      : [];
+
+    return {
+      questionText: String(item?.questionText || item?.text || "").trim(),
+      questionType:
+        item?.questionType === "multiple-choice" || options.length > 0
+          ? "multiple-choice"
+          : "short-answer",
+      options,
+      correctAnswer: String(item?.correctAnswer || "").trim(),
+    };
+  }).filter((item) => item.questionText);
 }
 
-export async function generateGenQuestions(
+export async function generateGenQuestions({
   topic,
   difficulty,
-  numberOfQuestions
-) {
-  const messages = [
-    {
-      role: "user",
-      content: `Generate ${numberOfQuestions} questions on the topic "${topic}" at a ${difficulty} difficulty level. Include a mix of multiple-choice and short-answer questions.`,
-    },
-  ];
+  numberOfQuestions,
+  field,
+  className,
+  subject,
+}) {
+  const prompt = `
+Generate ${numberOfQuestions} school questions as JSON only.
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: messages,
-        max_tokens: 1000,
-        temperature: 0.7,
-      });
+Context:
+- Topic: ${topic}
+- Field: ${field || "General"}
+- Subject: ${subject || "General"}
+- Class: ${className || "General"}
+- Difficulty: ${difficulty}
 
-      const questions = response.choices[0].message.content
-        .trim()
-        .split("\n")
-        .filter((q) => q);
+Return a JSON array. Each item must have:
+- questionText: string
+- questionType: "multiple-choice" or "short-answer"
+- options: string[] (empty for short-answer)
+- correctAnswer: string
 
-      return questions;
-    } catch (error) {
-      if (error.status === 429) {
-        console.warn("Rate limit exceeded. Retrying...");
-        await waitForRetry(attempt);
-      } else {
-        console.error("Error generating questions:", error);
-        throw new Error("Failed to generate questions from OpenAI");
-      }
-    }
-  }
-  throw new Error("Max retries exceeded");
+Rules:
+- Use a mix of multiple-choice and short-answer questions.
+- For multiple-choice, provide exactly 4 options.
+- Keep the content educational and concise.
+- Do not add markdown fences or commentary.
+`;
+
+  const result = await callGeminiJson(prompt, {
+    systemInstruction:
+      "You are an educational assessment assistant. Return valid JSON only.",
+    maxOutputTokens: 2200,
+    temperature: 0.6,
+  });
+
+  return normalizeQuestions(result);
 }

@@ -17,7 +17,7 @@ import mongoose from "mongoose";
 //     });
 //     const createdExam = await exam.save();
 //     res.status(201).json(createdExam);
-//   } catch {
+//   } catch {  
 //     res
 //       .status(500)
 //       .json({ error: "An error occurred while creating the exam." });

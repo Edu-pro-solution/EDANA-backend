@@ -243,8 +243,15 @@ export const login = async (req, res) => {
     console.log("Password provided by user:", password);
     console.log("Stored hashed password for user:", user.password);
 
-    // Compare provided password with hashed password
-    const isPasswordValid = bcrypt.compareSync(password, user.password); // Using compareSync for logging consistency
+    const storedPassword = String(user.password || "");
+    const looksHashed =
+      storedPassword.startsWith("$2a$") ||
+      storedPassword.startsWith("$2b$") ||
+      storedPassword.startsWith("$2y$");
+
+    const isPasswordValid = looksHashed
+      ? bcrypt.compareSync(password, storedPassword)
+      : password === storedPassword;
     console.log("Password validation result:", isPasswordValid);
 
     if (!isPasswordValid) {

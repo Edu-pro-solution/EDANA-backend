@@ -54,12 +54,15 @@ const authenticateUser = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // ✅ Token was signed as { id: userId } so use decoded.id
-    if (!decoded.id) {
+    // Support both token formats:
+    // { id } from generateToken utility
+    // { user, role } from login controller
+    const userId = decoded.id || decoded.user?._id || decoded.user?.id;
+    if (!userId) {
       return res.status(403).json({ error: "Unauthorized - User ID not found in token" });
     }
 
-    req.user = { id: decoded.id };  // ✅ now req.user.id works in your controller
+    req.user = { id: userId, role: decoded.role, ...decoded.user };
     next();
 
   } catch (error) {

@@ -123,6 +123,17 @@ const userSchema = new mongoose.Schema(
     birthday: {
       type: Date,
     },
+    linkedStudentIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    linkedClassNames: [
+      {
+        type: String,
+      },
+    ],
 
     session: [{ type: mongoose.Schema.Types.ObjectId, ref: "Session" }],
   },

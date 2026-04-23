@@ -1,5 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 import User from "../models/userModel.js"; // Replace with your actual model
 
 const router = express.Router();
@@ -14,20 +15,24 @@ export const createParent = async (req, res) => {
     }
 
     // Create a teacher (You may customize this)
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
     const parent = new User({
       role: "parent",
       username: req.body.username,
       email: req.body.email,
-      password: req.body.password,
+      password: hashedPassword,
       address: req.body.address,
       phone: req.body.phone,
-
-      // subjectTaught: req.body.subjectTaught, // Add other teacher-specific fields
+      parentsName: req.body.parentsName || req.body.username,
+      linkedStudentIds: Array.isArray(req.body.linkedStudentIds) ? req.body.linkedStudentIds : [],
+      linkedClassNames: Array.isArray(req.body.linkedClassNames) ? req.body.linkedClassNames : [],
+      session: req.body.session || null,
     });
 
     const createdParent = await parent.save();
     res.status(201).json(createdParent);
-  } catch {
+  } catch (err) {
+    console.error("createParent error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };

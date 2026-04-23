@@ -360,8 +360,6 @@ export const getMarkbyStudent = async (req, res) => {
         .filter(
           (m) =>
             m.studentId.toString() === studentId &&
-            (m.testscore !== 0 || m.examscore !== 0) &&
-            m.comment?.trim() &&
             mark.examId &&
             m.subjectId
         )

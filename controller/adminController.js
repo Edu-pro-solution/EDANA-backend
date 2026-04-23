@@ -63,6 +63,7 @@ export const loginUser = async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await Ad.findOne({ email, password });
+
     if (!user) {
       res.status(401).json({
         message: "Login not successful",

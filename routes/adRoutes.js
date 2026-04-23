@@ -7,7 +7,7 @@ import {
 } from "../controller/adminController.js";
 import authenticateUser from "../middleware/authMiddleware.js";
 
-const router = express.Router();
+const router = express.Router(); 
 
 router.post("/register", register);
 router.post("/login", loginUser);
