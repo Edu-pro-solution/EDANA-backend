@@ -37,18 +37,15 @@ import sessionRoute from "./routes/sessionRoute.js";
 import schRoute from "./routes/schRoute.js";
 import bulkStudentRoute from "./routes/bulkStudentRoute.js";
 import homeworkRoute from "./routes/homeworkRoute.js";
-import rateLimit from "express-rate-limit";
 import practicePqRoutes from "./routes/practicePqRoutes.js";
 import { getStudentsByClass } from "./controller/authController.js";
 import authenticateUser from "./middleware/authMiddleware.js";
 import connectDB from "./config/db2.js";
-import "./config/redis.js";
 
 dotenv.config();
 const app = express();
 connectDB();
 
-// AWS S3 setup
 const s3 = new S3({
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -76,71 +73,32 @@ const corsOptions = {
     "http://divinehealthcare.vercel.app",
     "https://divine4everhealth.com",
     "https://books.edupro.com.ng",
-    "https://edana-frontend.vercel.app"
+    "https://edana-frontend.vercel.app",
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 };
 
-app.use(express.json({ limit: "100mb" })); // Adjust size as needed
+app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true }));
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // Preflight for all routes
+app.options("*", cors(corsOptions));
 
 app.use((err, req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header(
     "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
   );
   next(err);
 });
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { error: "Too many requests, slow down" },
-  standardHeaders: true,
-});
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: "Too many login attempts" },
-});
-
-// ✅ Add this new one specifically for your login endpoint
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 3,
-  message: { error: "Too many login attempts, try again later" },
-});
-
-app.use("/api/", apiLimiter);
-app.use("/api/auth", authLimiter);
-app.use("/api/login", loginLimiter); // ✅ this is the important new line
-
-// routes follow below...console.log('✅ Rate limiters are registered');
-
-app.use("/api/", offlineRoute);
-app.use("/api/ad", adRoutes); 
-app.use("/api/", examlistRoute);
-app.use("/api/", jambRoute);
-app.use("/api/", noticeRoute);
-
-// Define routes
 const authRoutes = [
   { method: "get", path: "/students/:id", middleware: authenticateUser },
   { method: "get", path: "/teachers/:id", middleware: authenticateUser },
-  {
-    method: "get",
-    path: "/get-session-admin/:sessionId",
-    middleware: authenticateUser,
-  },
+  { method: "get", path: "/get-session-admin/:sessionId", middleware: authenticateUser },
   { method: "put", path: "/students/:id", middleware: authenticateUser },
   { method: "put", path: "/teachers/:id", middleware: authenticateUser },
 ];
@@ -148,17 +106,16 @@ const authRoutes = [
 const commonRouterWithAuth = commonRoute(s3, authRoutes);
 const onScreen = onScreenRoute(s3);
 
-// Routes
+app.use("/api/", offlineRoute);
+app.use("/api/ad", adRoutes);
+app.use("/api/", examlistRoute);
+app.use("/api/", jambRoute);
+app.use("/api/", noticeRoute);
 app.use("/api/auth", jambAuthRoute);
 app.use("/api/", innovateRoute);
-
 app.use("/api/", OffRoutes);
-
 app.use("/api/", receiptRoute);
-// Fix old marks with string subjectIds
-
 app.use("/api", commonRouterWithAuth);
-app.use("/api/", receiptRoute);
 app.use("/api/", schRoute);
 app.use("/api/", aiRoute);
 app.use("/api/", pinRoute);

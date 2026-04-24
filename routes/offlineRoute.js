@@ -48,6 +48,7 @@
 
 // export default router;
 import express from "express";
+import multer from "multer";
 import {
   submitExam,
   deleteExam,
@@ -63,15 +64,18 @@ import {
   updateMark,
   updateMarks,
   getAllScoresForExamSession,
-  fixSubjectIds
+  fixSubjectIds,
+  importMarks,
 } from "../controller/offMarkController.js";
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 //CREATE route
 router.post("/offlineexam", submitExam);
 router.post("/addSessionToExamWithoutSession", addSessionToExamWithoutSession);
 router.post("/save-marks/:sessionId", saveMark);
+router.post("/import-marks/:sessionId", upload.single("file"), importMarks);
 router.post(
   "/fix-subject-ids/:sessionId/:examId", // optional if you require auth
   fixSubjectIds

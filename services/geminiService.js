@@ -2,7 +2,9 @@ import axios from "axios";
 
 const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_IMAGE_MODEL =
+  process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash";
 const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || "v1beta";
 
 function getGeminiUrl(modelName) {
@@ -53,10 +55,7 @@ export async function callGemini(
     new Set(
       [
         GEMINI_MODEL,
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash-8b",
-        "gemini-1.5-flash-8b-latest",
+        "gemini-2.5-flash",
       ].filter(Boolean)
     )
   );
@@ -138,4 +137,96 @@ export async function callGeminiJson(prompt, options = {}) {
   } catch {
     throw new Error("Gemini returned invalid JSON.");
   }
+}
+
+export async function callGeminiJsonWithImage(
+  prompt,
+  {
+    mimeType = "image/jpeg",
+    imageBuffer,
+    systemInstruction,
+    temperature = 0.1,
+    maxOutputTokens = 2048,
+  } = {}
+) {
+  ensureApiKey();
+
+  if (!imageBuffer) {
+    throw new Error("An image buffer is required for Gemini image parsing.");
+  }
+
+  const models = Array.from(
+    new Set(
+      [
+        GEMINI_IMAGE_MODEL,
+        "gemini-2.5-flash",
+      ].filter(Boolean)
+    )
+  );
+
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: imageBuffer.toString("base64"),
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature,
+      maxOutputTokens,
+      responseMimeType: "application/json",
+    },
+  };
+
+  if (systemInstruction) {
+    payload.systemInstruction = {
+      parts: [{ text: systemInstruction }],
+    };
+  }
+
+  for (const modelName of models) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const response = await axios.post(getGeminiUrl(modelName), payload, {
+          params: { key: GEMINI_API_KEY },
+          headers: { "Content-Type": "application/json" },
+          timeout: 60000,
+        });
+
+        return JSON.parse(stripJsonFences(extractText(response.data)));
+      } catch (error) {
+        const status = error?.response?.status;
+        if (
+          error?.code === "ECONNABORTED" ||
+          error?.code === "ENOTFOUND" ||
+          error?.code === "ECONNRESET" ||
+          status === 429 ||
+          status >= 500
+        ) {
+          await waitForRetry(attempt);
+          continue;
+        }
+
+        const apiMessage =
+          error?.response?.data?.error?.message || error?.message || "Gemini image OCR failed";
+
+        if ((status === 400 || status === 404) && models.indexOf(modelName) < models.length - 1) {
+          break;
+        }
+
+        throw new Error(apiMessage);
+      }
+    }
+  }
+
+  throw new Error(
+    `Gemini image OCR retries exhausted for models: ${models.join(", ")}.`
+  );
 }

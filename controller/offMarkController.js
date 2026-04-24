@@ -6,6 +6,8 @@ import Student from "../models/userModel.js";
 import Class from "../models/classModel.js";
 import Session from "../models/sessionModel.js";
 import Subject from "../models/subModel.js";
+import XLSX from "xlsx";
+import { callGeminiJsonWithImage } from "../services/geminiService.js";
 // export const saveMark = async (req, res) => {
 //   const { sessionId } = req.params;
 
@@ -810,6 +812,422 @@ export const updateMarks = async (req, res) => {
   } catch (error) {
     console.error("Error updating marks:", error);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const normalizeText = (value = "") =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const normalizeTokens = (value = "") =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+const toSafeNumber = (value) => {
+  if (value == null || value === "") return 0;
+  const parsed = Number(String(value).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const parseSpreadsheetRows = (buffer) => {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(sheet, { defval: "" });
+};
+
+const findColumn = (row, candidates) => {
+  const entries = Object.keys(row);
+  const normalizedCandidates = candidates.map(normalizeText);
+  return entries.find((key) => normalizedCandidates.includes(normalizeText(key)));
+};
+
+const buildImportedRowsFromSheet = (rows) => {
+  return rows
+    .map((row) => {
+      const nameKey = findColumn(row, ["student name", "name", "student", "student detail"]);
+      const admKey = findColumn(row, ["adm no", "admission number", "admission no", "admno"]);
+      const testKey = findColumn(row, ["test", "test score", "testscore"]);
+      const test1Key = findColumn(row, ["test1", "test 1", "first test", "ca1"]);
+      const test2Key = findColumn(row, ["test2", "test 2", "second test", "ca2"]);
+      const examKey = findColumn(row, ["exam", "exam score", "examscore"]);
+
+      const name = String(nameKey ? row[nameKey] : "").trim();
+      const admNo = String(admKey ? row[admKey] : "").trim();
+      const testScore = Math.min(40, toSafeNumber(testKey ? row[testKey] : 0) + toSafeNumber(test1Key ? row[test1Key] : 0) + toSafeNumber(test2Key ? row[test2Key] : 0));
+      const examScore = Math.min(60, toSafeNumber(examKey ? row[examKey] : 0));
+
+      if (!name && !admNo) return null;
+
+      return {
+        rawName: name,
+        rawAdmNo: admNo,
+        testscore: testScore,
+        examscore: examScore,
+      };
+    })
+    .filter(Boolean);
+};
+
+const getWordBox = (word = {}) => {
+  const bbox = word.bbox || {};
+  const x0 = Number(bbox.x0 ?? bbox.left ?? word.x0 ?? 0);
+  const y0 = Number(bbox.y0 ?? bbox.top ?? word.y0 ?? 0);
+  const x1 = Number(bbox.x1 ?? bbox.right ?? word.x1 ?? x0);
+  const y1 = Number(bbox.y1 ?? bbox.bottom ?? word.y1 ?? y0);
+  return {
+    x0,
+    y0,
+    x1,
+    y1,
+    xMid: (x0 + x1) / 2,
+    yMid: (y0 + y1) / 2,
+  };
+};
+
+const groupWordsIntoRows = (words = []) => {
+  const sortedWords = [...words]
+    .filter((word) => String(word.text || "").trim())
+    .sort((a, b) => {
+      const first = getWordBox(a);
+      const second = getWordBox(b);
+      if (Math.abs(first.yMid - second.yMid) > 12) return first.yMid - second.yMid;
+      return first.x0 - second.x0;
+    });
+
+  const rows = [];
+  sortedWords.forEach((word) => {
+    const box = getWordBox(word);
+    const existingRow = rows.find((row) => Math.abs(row.yMid - box.yMid) <= Math.max(18, row.avgHeight * 0.75));
+    if (existingRow) {
+      existingRow.words.push(word);
+      existingRow.yMid = (existingRow.yMid * (existingRow.words.length - 1) + box.yMid) / existingRow.words.length;
+      existingRow.avgHeight =
+        (existingRow.avgHeight * (existingRow.words.length - 1) + Math.max(1, box.y1 - box.y0)) / existingRow.words.length;
+      return;
+    }
+
+    rows.push({
+      yMid: box.yMid,
+      avgHeight: Math.max(1, box.y1 - box.y0),
+      words: [word],
+    });
+  });
+
+  return rows
+    .map((row) => ({
+      ...row,
+      words: row.words.sort((a, b) => getWordBox(a).x0 - getWordBox(b).x0),
+      text: row.words.map((word) => String(word.text || "").trim()).join(" ").trim(),
+    }))
+    .filter((row) => row.words.length > 0);
+};
+
+const extractNumbersFromWords = (words = []) =>
+  words
+    .flatMap((word) => String(word.text || "").match(/\d+/g) || [])
+    .map(Number)
+    .filter((value) => Number.isFinite(value));
+
+const buildImportedRowsFromOcrWords = (words = []) => {
+  const rows = groupWordsIntoRows(words);
+  if (!rows.length) return [];
+
+  const headerRow = rows.find((row) => {
+    const normalized = normalizeText(row.text);
+    return normalized.includes("student") && normalized.includes("test") && normalized.includes("exam");
+  });
+
+  const headerWords = headerRow?.words || [];
+  const studentHeader = headerWords.find((word) => normalizeText(word.text).includes("student"));
+  const testHeader = headerWords.find((word) => normalizeText(word.text).includes("test"));
+  const examHeader = headerWords.find((word) => normalizeText(word.text).includes("exam"));
+
+  const xMids = words.map((word) => getWordBox(word).xMid).sort((a, b) => a - b);
+  const minX = xMids[0] || 0;
+  const maxX = xMids[xMids.length - 1] || 900;
+
+  const studentCenter = studentHeader ? getWordBox(studentHeader).xMid : minX + (maxX - minX) * 0.18;
+  const testCenter = testHeader ? getWordBox(testHeader).xMid : minX + (maxX - minX) * 0.53;
+  const examCenter = examHeader ? getWordBox(examHeader).xMid : minX + (maxX - minX) * 0.83;
+
+  const studentBoundary = (studentCenter + testCenter) / 2;
+  const examBoundary = (testCenter + examCenter) / 2;
+  const startIndex = headerRow ? rows.indexOf(headerRow) + 1 : 0;
+
+  return rows
+    .slice(startIndex)
+    .map((row) => {
+      const nameWords = [];
+      const testWords = [];
+      const examWords = [];
+
+      row.words.forEach((word) => {
+        const xMid = getWordBox(word).xMid;
+        if (xMid < studentBoundary) {
+          nameWords.push(word);
+        } else if (xMid < examBoundary) {
+          testWords.push(word);
+        } else {
+          examWords.push(word);
+        }
+      });
+
+      const rawName = nameWords.map((word) => String(word.text || "").trim()).join(" ").replace(/\s+/g, " ").trim();
+      const testNumbers = extractNumbersFromWords(testWords);
+      const examNumbers = extractNumbersFromWords(examWords);
+      const testscore = Math.min(
+        40,
+        testNumbers.filter((value) => value <= 40).reduce((sum, value) => sum + value, 0)
+      );
+      const examscore = Math.min(
+        60,
+        examNumbers.filter((value) => value <= 60).reduce((max, value) => Math.max(max, value), 0)
+      );
+
+      const looksLikeName = normalizeTokens(rawName).some((token) => /[a-z]/.test(token));
+      if (!looksLikeName || (!testscore && !examscore)) return null;
+
+      return {
+        rawName,
+        rawAdmNo: "",
+        testscore,
+        examscore,
+      };
+    })
+    .filter(Boolean);
+};
+
+const buildImportedRowsFromOcrText = (text) => {
+  const lines = String(text)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const rows = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const nextChunk = lines.slice(index, index + 5).join(" ");
+    const numbers = (nextChunk.match(/\d+/g) || []).map(Number);
+    if (!/[a-z]/i.test(line) || numbers.length < 2) continue;
+
+    const testNumbers = numbers.filter((value) => value <= 40);
+    const examNumbers = numbers.filter((value) => value <= 60);
+    const testscore = Math.min(40, (testNumbers[0] || 0) + (testNumbers[1] || 0));
+    const examscore = Math.min(60, examNumbers.find((value) => value > 20) || examNumbers[testNumbers.length] || 0);
+
+    rows.push({
+      rawName: line,
+      rawAdmNo: "",
+      testscore,
+      examscore,
+    });
+  }
+
+  return rows;
+};
+
+const normalizeGeminiRows = (rows = []) =>
+  rows
+    .map((row) => ({
+      rawName: String(row?.student || row?.name || row?.studentName || "").trim(),
+      rawAdmNo: String(row?.admNo || row?.admissionNumber || "").trim(),
+      testscore: Math.min(
+        40,
+        toSafeNumber(row?.testscore ?? row?.test ?? row?.testScore ?? row?.ca ?? row?.continuousAssessment)
+      ),
+      examscore: Math.min(
+        60,
+        toSafeNumber(row?.examscore ?? row?.exam ?? row?.examScore)
+      ),
+    }))
+    .filter((row) => row.rawName && (row.testscore > 0 || row.examscore > 0));
+
+const levenshteinDistance = (first = "", second = "") => {
+  const a = normalizeText(first);
+  const b = normalizeText(second);
+  if (!a) return b.length;
+  if (!b) return a.length;
+
+  const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+};
+
+const getNameSimilarity = (left = "", right = "") => {
+  const compactLeft = normalizeText(left);
+  const compactRight = normalizeText(right);
+  if (!compactLeft || !compactRight) return 0;
+
+  if (compactLeft === compactRight) return 1;
+
+  const leftTokens = normalizeTokens(left);
+  const rightTokens = normalizeTokens(right);
+  const overlap = leftTokens.filter((token) => rightTokens.includes(token)).length;
+  const tokenScore = overlap / Math.max(leftTokens.length, rightTokens.length, 1);
+  const editScore =
+    1 - levenshteinDistance(compactLeft, compactRight) / Math.max(compactLeft.length, compactRight.length, 1);
+
+  return Math.max(tokenScore, editScore);
+};
+
+const matchImportedRowToStudent = (row, students = []) => {
+  const normalizedAdm = normalizeText(row.rawAdmNo);
+  const normalizedName = normalizeText(row.rawName);
+
+  if (normalizedAdm) {
+    const admMatch = students.find((student) => normalizeText(student.AdmNo) === normalizedAdm);
+    if (admMatch) return admMatch;
+  }
+
+  const exactNameMatch = students.find(
+    (student) => normalizeText(student.studentName || student.username || student.name) === normalizedName
+  );
+  if (exactNameMatch) return exactNameMatch;
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  students.forEach((student) => {
+    const studentName = student.studentName || student.username || student.name || "";
+    const score = getNameSimilarity(row.rawName, studentName);
+    if (score > bestScore) {
+      bestMatch = student;
+      bestScore = score;
+    }
+  });
+
+  return bestScore >= 0.72 ? bestMatch : null;
+};
+
+export const importMarks = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { className } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ message: "A marks file is required." });
+    }
+
+    if (!sessionId || !className) {
+      return res.status(400).json({ message: "sessionId and className are required." });
+    }
+
+    const students = await Student.find({
+      classname: className,
+      session: sessionId,
+    }).lean();
+
+    const type = String(req.file.mimetype || "");
+    let importedRows = [];
+    let ocrDebug = null;
+
+    if (type.includes("sheet") || type.includes("excel") || type.includes("csv")) {
+      importedRows = buildImportedRowsFromSheet(parseSpreadsheetRows(req.file.buffer));
+    } else if (type.startsWith("image/")) {
+      let geminiResult = null;
+      let geminiError = null;
+
+      try {
+        geminiResult = await callGeminiJsonWithImage(
+          [
+            "Read this uploaded school mark sheet image and extract only the student rows in JSON.",
+            'Return JSON in this exact shape: {"rows":[{"student":"John Doe","test":25,"exam":50}]}',
+            "Rules:",
+            "- Only return rows that clearly contain a student name and marks.",
+            "- Ignore headers, lines, doodles, and gibberish.",
+            "- If there are two test columns, add them together and cap test at 40.",
+            "- Cap exam at 60.",
+            "- Do not invent names or marks.",
+            "- If you are unsure about a row, leave it out.",
+          ].join("\n"),
+          {
+            imageBuffer: req.file.buffer,
+            mimeType: req.file.mimetype || "image/jpeg",
+            systemInstruction:
+              "You extract handwritten school marks from images into strict JSON tables.",
+          }
+        );
+
+        importedRows = normalizeGeminiRows(geminiResult?.rows || []);
+      } catch (error) {
+        geminiError = error?.message || String(error);
+      }
+
+      ocrDebug = {
+        engineUsed: "gemini-vision",
+        geminiError,
+        geminiRows: importedRows,
+        rawGeminiResponse: geminiResult,
+        parsedRows: importedRows,
+      };
+      console.log("OCR engine used:", ocrDebug.engineUsed);
+      console.log("OCR parsed rows:", importedRows);
+
+      if (geminiError) {
+        console.error("OCR Gemini import failed:", geminiError);
+        console.error("OCR Gemini debug payload:", ocrDebug);
+        return res.status(422).json({
+          code: "OCR_IMAGE_PARSE_FAILED",
+          message:
+            "We could not read that mark sheet image clearly. Please upload a clearer image or use CSV/Excel.",
+          ocrDebug,
+        });
+      }
+
+      if (!importedRows.length) {
+        console.warn("OCR import returned no valid rows.", ocrDebug);
+        return res.status(422).json({
+          code: "OCR_NO_ROWS_FOUND",
+          message:
+            "We could not find any valid student rows in that image. Please review the image quality or use CSV/Excel.",
+          ocrDebug,
+        });
+      }
+    } else {
+      return res.status(400).json({ message: "Unsupported file format. Use CSV, Excel, or an image." });
+    }
+
+    const matchedRows = importedRows.map((row) => {
+      const student = matchImportedRowToStudent(row, students);
+
+      return {
+        matched: Boolean(student),
+        studentId: student?._id || "",
+        studentName: student?.studentName || student?.username || row.rawName || "Unknown Student",
+        AdmNo: student?.AdmNo || row.rawAdmNo || "",
+        testscore: Math.min(40, toSafeNumber(row.testscore)),
+        examscore: Math.min(60, toSafeNumber(row.examscore)),
+      };
+    });
+
+    return res.status(200).json({
+      rows: matchedRows,
+      unmatched: matchedRows.filter((row) => !row.matched),
+      matchedCount: matchedRows.filter((row) => row.matched).length,
+      totalCount: matchedRows.length,
+      message: "Marks imported successfully. Review and edit before saving.",
+      ocrDebug,
+    });
+  } catch (error) {
+    console.error("importMarks error:", error);
+    return res.status(500).json({ message: "Failed to import marks." });
   }
 };
   
