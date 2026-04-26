@@ -74,6 +74,8 @@ const corsOptions = {
     "https://divine4everhealth.com",
     "https://books.edupro.com.ng",
     "https://edana-frontend.vercel.app",
+    "http://localhost:8081",
+    "https://truebrightbrainfrontend.vercel.app",
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
