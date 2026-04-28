@@ -76,6 +76,8 @@ const corsOptions = {
     "https://edana-frontend.vercel.app",
     "http://localhost:8081",
     "https://truebrightbrainfrontend.vercel.app",
+    "https://edana.edupro.com.ng",
+    "https://tbbs.edupro.com.ng",
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
